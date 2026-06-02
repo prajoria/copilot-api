@@ -47,11 +47,20 @@ export function translateToOpenAI(
 }
 
 function translateModelName(model: string): string {
-  // Subagent requests use a specific model number which Copilot doesn't support
-  if (model.startsWith("claude-sonnet-4-")) {
-    return model.replace(/^claude-sonnet-4-.*/, "claude-sonnet-4")
-  } else if (model.startsWith("claude-opus-")) {
-    return model.replace(/^claude-opus-4-.*/, "claude-opus-4")
+  // Hard override: when COPILOT_API_FORCE_MODEL is set, every request is
+  // routed to that exact upstream model id regardless of what the client asked
+  // for. Lets callers pin a specific Copilot model from a single env var
+  // (see start-claude.bat).
+  const forced = process.env.COPILOT_API_FORCE_MODEL
+  if (forced && forced.length > 0) {
+    return forced
+  }
+  // Anthropic-style ids use dashes (claude-opus-4-6); Copilot uses dots
+  // (claude-opus-4.6). Convert the minor-version separator and preserve any
+  // suffix such as "-1m". Already-dotted ids pass through unchanged.
+  const match = model.match(/^(claude-(?:opus|sonnet|haiku)-\d+)-(\d+)(.*)$/)
+  if (match) {
+    return `${match[1]}.${match[2]}${match[3]}`
   }
   return model
 }

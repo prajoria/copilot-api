@@ -20,6 +20,13 @@ export async function handleCompletion(c: Context) {
   let payload = await c.req.json<ChatCompletionsPayload>()
   consola.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
+  // Hard override: route every request to COPILOT_API_FORCE_MODEL if set.
+  const forcedModel = process.env.COPILOT_API_FORCE_MODEL
+  if (forcedModel && forcedModel.length > 0 && payload.model !== forcedModel) {
+    consola.debug(`Forcing model ${payload.model} -> ${forcedModel}`)
+    payload = { ...payload, model: forcedModel }
+  }
+
   // Find the selected model
   const selectedModel = state.models?.data.find(
     (model) => model.id === payload.model,
