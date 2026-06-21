@@ -123,6 +123,68 @@ test("does NOT modify payload when last message is already a user turn", async (
   expect(body.messages.at(-1)?.content).toBe("follow-up")
 })
 
+test("strips raw control characters from tool_call arguments before forwarding", async () => {
+  const callIndex = fetchMock.mock.calls.length
+  // ESC (0x1b) is what ANSI color codes captured from terminal output use; a
+  // raw ESC inside the nested arguments JSON makes Copilot reject the request
+  // with "Invalid JSON format in tool call arguments".
+  const argsWithEsc = `{"command":"echo \u001b[36mhi\u001b[0m"}`
+  const payload: ChatCompletionsPayload = {
+    messages: [
+      { role: "user", content: "run it" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "bash", arguments: argsWithEsc },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: "done" },
+      { role: "user", content: "thanks" },
+    ],
+    model: "gpt-test",
+  }
+  await createChatCompletions(payload)
+  const rawBody = (fetchMock.mock.calls[callIndex][1] as { body: string }).body
+  // The serialized request body must contain no raw control characters.
+  expect(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(rawBody)).toBe(false)
+  const body = JSON.parse(rawBody) as ChatCompletionsPayload
+  const forwardedArgs = body.messages[1].tool_calls?.[0].function.arguments
+  expect(forwardedArgs).toBe(`{"command":"echo [36mhi[0m"}`)
+  // Stripped arguments must remain valid JSON.
+  expect(() => JSON.parse(forwardedArgs as string)).not.toThrow()
+})
+
+test("strips raw control characters from message text content", async () => {
+  const callIndex = fetchMock.mock.calls.length
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hello\u0000\u001bworld" }],
+    model: "gpt-test",
+  }
+  await createChatCompletions(payload)
+  const body = JSON.parse(
+    (fetchMock.mock.calls[callIndex][1] as { body: string }).body,
+  ) as ChatCompletionsPayload
+  expect(body.messages[0].content).toBe("helloworld")
+})
+
+test("preserves tab, newline and carriage return in content", async () => {
+  const callIndex = fetchMock.mock.calls.length
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "a\tb\nc\rd" }],
+    model: "gpt-test",
+  }
+  await createChatCompletions(payload)
+  const body = JSON.parse(
+    (fetchMock.mock.calls[callIndex][1] as { body: string }).body,
+  ) as ChatCompletionsPayload
+  expect(body.messages[0].content).toBe("a\tb\nc\rd")
+})
+
 test("throws HTTPError and preserves upstream body on non-ok response", async () => {
   const upstreamBody =
     "This model does not support assistant message prefill."

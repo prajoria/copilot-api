@@ -5,6 +5,57 @@ import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
+// Raw (unescaped) ASCII control characters other than tab/newline/carriage
+// return. Terminal output that gets captured into tool inputs/results commonly
+// carries ANSI escape sequences (ESC = 0x1b) plus other control bytes.
+const CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g
+
+const stripControlChars = (value: string): string =>
+  value.replace(CONTROL_CHARS_RE, "")
+
+const sanitizeMessageContent = (
+  content: Message["content"],
+): Message["content"] => {
+  if (typeof content === "string") {
+    return stripControlChars(content)
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) =>
+      part.type === "text" ? { ...part, text: stripControlChars(part.text) } : (
+        part
+      ),
+    )
+  }
+  return content
+}
+
+// Copilot's upstream JSON parser rejects raw control characters inside a
+// tool_call's `arguments`, which is itself a JSON string nested within the
+// request JSON. A raw control byte that survives one level of unescaping
+// becomes illegal in that inner JSON, yielding HTTP 400:
+//   { code: "invalid_tool_call_format",
+//     message: "Invalid JSON format in tool call arguments" }
+// Strip control characters from outgoing tool_call arguments and text content
+// before forwarding. This is a no-op for already well-formed payloads (where
+// control characters are present only as escaped \u00XX sequences).
+const sanitizeMessages = (messages: Array<Message>): Array<Message> =>
+  messages.map((message) => {
+    const sanitized: Message = {
+      ...message,
+      content: sanitizeMessageContent(message.content),
+    }
+    if (message.tool_calls) {
+      sanitized.tool_calls = message.tool_calls.map((call) => ({
+        ...call,
+        function: {
+          ...call.function,
+          arguments: stripControlChars(call.function.arguments),
+        },
+      }))
+    }
+    return sanitized
+  })
+
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
 ) => {
@@ -24,7 +75,7 @@ export const createChatCompletions = async (
   const lastMessage = payload.messages.at(-1)
   const needsUserContinuation =
     lastMessage?.role === "assistant" && !lastMessage.tool_calls?.length
-  const effectivePayload: ChatCompletionsPayload =
+  const continuedPayload: ChatCompletionsPayload =
     needsUserContinuation ?
       {
         ...payload,
@@ -38,6 +89,15 @@ export const createChatCompletions = async (
     consola.debug(
       "Trailing assistant prefill detected — appending synthetic user continuation",
     )
+  }
+
+  // Strip raw control characters from tool_call arguments and text content so
+  // Copilot's strict upstream JSON parser does not reject the request with
+  // "Invalid JSON format in tool call arguments" (HTTP 400). No-op for clean
+  // payloads.
+  const effectivePayload: ChatCompletionsPayload = {
+    ...continuedPayload,
+    messages: sanitizeMessages(continuedPayload.messages),
   }
 
   const enableVision = effectivePayload.messages.some(
