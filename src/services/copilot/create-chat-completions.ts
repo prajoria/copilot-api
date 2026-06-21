@@ -10,7 +10,37 @@ export const createChatCompletions = async (
 ) => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
 
-  const enableVision = payload.messages.some(
+  // Guard against assistant-message prefill. Some Copilot-hosted models
+  // (current Claude Sonnet/Opus, GPT-5 variants) reject requests whose last
+  // message is an assistant turn with:
+  //   "This model does not support assistant message prefill.
+  //    The conversation must end with a user message."
+  // Anthropic-style clients routinely send a trailing assistant message as a
+  // prefill. When that happens, append a minimal user continuation so the
+  // request is accepted upstream; the prefilled assistant text stays in
+  // context. We only do this for plain assistant text (no tool_calls), since
+  // an assistant turn carrying tool_calls would normally be followed by a
+  // tool-result message and is a different shape entirely.
+  const lastMessage = payload.messages.at(-1)
+  const needsUserContinuation =
+    lastMessage?.role === "assistant" && !lastMessage.tool_calls?.length
+  const effectivePayload: ChatCompletionsPayload =
+    needsUserContinuation ?
+      {
+        ...payload,
+        messages: [
+          ...payload.messages,
+          { role: "user", content: "Continue." },
+        ],
+      }
+    : payload
+  if (needsUserContinuation) {
+    consola.debug(
+      "Trailing assistant prefill detected — appending synthetic user continuation",
+    )
+  }
+
+  const enableVision = effectivePayload.messages.some(
     (x) =>
       typeof x.content !== "string"
       && x.content?.some((x) => x.type === "image_url"),
@@ -18,7 +48,7 @@ export const createChatCompletions = async (
 
   // Agent/user check for X-Initiator header
   // Determine if any message is from an agent ("assistant" or "tool")
-  const isAgentCall = payload.messages.some((msg) =>
+  const isAgentCall = effectivePayload.messages.some((msg) =>
     ["assistant", "tool"].includes(msg.role),
   )
 
@@ -31,15 +61,24 @@ export const createChatCompletions = async (
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(effectivePayload),
   })
 
   if (!response.ok) {
-    consola.error("Failed to create chat completions", response)
+    // Read the upstream body from a clone so the real failure reason is
+    // visible immediately. Logging the bare Response only prints an
+    // unconsumed ReadableStream, hiding why Copilot rejected the request.
+    // The original `response` is left intact for `forwardError` downstream.
+    const errorBody = await response.clone().text()
+    consola.error("Failed to create chat completions", {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorBody,
+    })
     throw new HTTPError("Failed to create chat completions", response)
   }
 
-  if (payload.stream) {
+  if (effectivePayload.stream) {
     return events(response)
   }
 
