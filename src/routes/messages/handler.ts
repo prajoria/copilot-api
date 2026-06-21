@@ -4,6 +4,7 @@ import consola from "consola"
 import { streamSSE } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
+import { parseJsonBody } from "~/lib/json"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import {
@@ -25,7 +26,9 @@ import { translateChunkToAnthropicEvents } from "./stream-translation"
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
-  const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+  const anthropicPayload = parseJsonBody<AnthropicMessagesPayload>(
+    await c.req.text(),
+  )
   consola.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
 
   const openAIPayload = translateToOpenAI(anthropicPayload)

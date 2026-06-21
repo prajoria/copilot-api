@@ -4,6 +4,7 @@ import consola from "consola"
 import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
+import { parseJsonBody } from "~/lib/json"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
@@ -17,7 +18,7 @@ import {
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
-  let payload = await c.req.json<ChatCompletionsPayload>()
+  let payload = parseJsonBody<ChatCompletionsPayload>(await c.req.text())
   consola.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
   // Hard override: route every request to COPILOT_API_FORCE_MODEL if set.
