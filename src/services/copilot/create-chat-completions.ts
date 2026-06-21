@@ -58,6 +58,15 @@ export const createChatCompletions = async (
     "X-Initiator": isAgentCall ? "agent" : "user",
   }
 
+  // Surface the exact model id sent upstream. Both the OpenAI and the
+  // Anthropic (Claude Code) routes funnel through here after any
+  // COPILOT_API_FORCE_MODEL override is applied, so this is the single source
+  // of truth for "which model is actually talking" — clients like Claude Code
+  // do not always show it.
+  consola.info(
+    `Using model: ${effectivePayload.model} (initiator: ${isAgentCall ? "agent" : "user"}, stream: ${Boolean(effectivePayload.stream)})`,
+  )
+
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
     headers,
