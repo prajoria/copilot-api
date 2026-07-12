@@ -127,24 +127,82 @@ export const createChatCompletions = async (
     `Using model: ${effectivePayload.model} (initiator: ${isAgentCall ? "agent" : "user"}, stream: ${Boolean(effectivePayload.stream)})`,
   )
 
-  const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(effectivePayload),
-  })
+  // Transient upstream failures are common on the Copilot edge: sporadic
+  // socket resets (`ECONNRESET` / `fetch failed`), gateway `429`/`5xx`, and —
+  // critically — a *bare* `400 Bad Request` that carries no structured error
+  // code. That bare 400 is a transient gateway rejection (unlike a structured
+  // 400 such as `invalid_tool_call_format`, which is deterministic for a given
+  // payload) and usually succeeds on retry. Retry those cases with a short
+  // exponential backoff; surface every other error immediately so genuine
+  // payload problems are never masked. Tune with COPILOT_API_MAX_RETRIES.
+  const url = `${copilotBaseUrl(state)}/chat/completions`
+  const requestBody = JSON.stringify(effectivePayload)
+  const maxAttempts =
+    Math.max(0, Number(process.env.COPILOT_API_MAX_RETRIES ?? "2")) + 1
 
-  if (!response.ok) {
+  const isBareBadRequest = (status: number, body: string): boolean =>
+    status === 400 && body.trim().toLowerCase() === "bad request"
+  const isRetryableStatus = (status: number): boolean =>
+    status === 429 || (status >= 500 && status <= 599)
+  const backoffMs = (attempt: number): number => 400 * 2 ** (attempt - 1)
+  const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms))
+
+  let response: Response | undefined
+  let lastErrorBody = ""
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: requestBody,
+      })
+    } catch (networkError) {
+      // Socket-level failure (ECONNRESET, "fetch failed", ETIMEDOUT, ...).
+      if (attempt < maxAttempts) {
+        const delay = backoffMs(attempt)
+        consola.warn(
+          `Upstream fetch threw (${(networkError as Error).message}); retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
+        )
+        await sleep(delay)
+        continue
+      }
+      throw networkError
+    }
+
+    if (response.ok) break
+
     // Read the upstream body from a clone so the real failure reason is
-    // visible immediately. Logging the bare Response only prints an
-    // unconsumed ReadableStream, hiding why Copilot rejected the request.
-    // The original `response` is left intact for `forwardError` downstream.
-    const errorBody = await response.clone().text()
+    // visible immediately and so we can decide whether the failure is
+    // transient. The original `response` is left intact for `forwardError`.
+    lastErrorBody = await response.clone().text()
+    const transient =
+      isRetryableStatus(response.status)
+      || isBareBadRequest(response.status, lastErrorBody)
+    if (transient && attempt < maxAttempts) {
+      const delay = backoffMs(attempt)
+      consola.warn(
+        `Upstream ${response.status} ${response.statusText} (transient); retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
+      )
+      await sleep(delay)
+      continue
+    }
+    break
+  }
+
+  if (!response || !response.ok) {
     consola.error("Failed to create chat completions", {
-      status: response.status,
-      statusText: response.statusText,
-      body: errorBody,
+      status: response?.status,
+      statusText: response?.statusText,
+      body: lastErrorBody,
     })
-    throw new HTTPError("Failed to create chat completions", response)
+    throw new HTTPError(
+      "Failed to create chat completions",
+      response
+      ?? new Response(lastErrorBody || "Upstream request failed", {
+        status: 502,
+      }),
+    )
   }
 
   if (effectivePayload.stream) {

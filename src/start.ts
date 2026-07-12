@@ -110,14 +110,17 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     }
   }
 
-  consola.box(
-    `🌐 Usage Viewer: https://ericc-ch.github.io/copilot-api?endpoint=${serverUrl}/usage`,
+  consola.info(
+    `Usage Viewer: https://ericc-ch.github.io/copilot-api?endpoint=${serverUrl}/usage`,
   )
 
   serve({
     fetch: server.fetch as ServerHandler,
     port: options.port,
+    silent: true,
   })
+
+  consola.success(`Listening on ${serverUrl}/ (all interfaces)`)
 }
 
 export const start = defineCommand({
