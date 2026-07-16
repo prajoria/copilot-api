@@ -80,7 +80,15 @@ export async function setupGitHubToken(
     await logUser()
   } catch (error) {
     if (error instanceof HTTPError) {
-      consola.error("Failed to get GitHub token:", await error.response.json())
+      // The error body is not guaranteed to be JSON — GitHub returns an
+      // HTML page (e.g. the "Hello future GitHubber" 503) for transient
+      // upstream failures. Read it as text so logging the error can
+      // never itself throw "Unexpected token '<'" and mask the real cause.
+      const body = await error.response.text().catch(() => "<unreadable body>")
+      consola.error(
+        `Failed to get GitHub token (HTTP ${error.response.status}):`,
+        body.slice(0, 500),
+      )
       throw error
     }
 
@@ -90,6 +98,17 @@ export async function setupGitHubToken(
 }
 
 async function logUser() {
-  const user = await getGitHubUser()
-  consola.info(`Logged in as ${user.login}`)
+  // Cosmetic "Logged in as X" banner only. GitHub's /user endpoint
+  // intermittently returns a transient 503 (HTML body); that must never
+  // be fatal to startup — the Copilot token is fetched separately and is
+  // what actually matters. Warn and continue instead of crashing.
+  try {
+    const user = await getGitHubUser()
+    consola.info(`Logged in as ${user.login}`)
+  } catch (error) {
+    consola.warn(
+      "Could not fetch GitHub user (continuing anyway):",
+      error instanceof HTTPError ? `HTTP ${error.response.status}` : error,
+    )
+  }
 }
