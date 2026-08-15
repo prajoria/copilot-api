@@ -5,13 +5,33 @@ import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
-// Raw (unescaped) ASCII control characters other than tab/newline/carriage
-// return. Terminal output that gets captured into tool inputs/results commonly
-// carries ANSI escape sequences (ESC = 0x1b) plus other control bytes.
-const CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g
+import {
+  fromResponsesResult,
+  toResponsesPayload,
+  translateResponsesStream,
+  usesResponsesApi,
+} from "./responses-api"
 
 const stripControlChars = (value: string): string =>
-  value.replace(CONTROL_CHARS_RE, "")
+  Array.from(value)
+    .filter((character) => {
+      const codePoint = character.codePointAt(0) ?? 0
+      return (
+        codePoint >= 32
+        || codePoint === 9
+        || codePoint === 10
+        || codePoint === 13
+      )
+    })
+    .join("")
+
+const isBareBadRequest = (status: number, body: string): boolean =>
+  status === 400 && body.trim().toLowerCase() === "bad request"
+const isRetryableStatus = (status: number): boolean =>
+  status === 429 || (status >= 500 && status <= 599)
+const backoffMs = (attempt: number): number => 400 * 2 ** (attempt - 1)
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms))
 
 const sanitizeMessageContent = (
   content: Message["content"],
@@ -21,9 +41,9 @@ const sanitizeMessageContent = (
   }
   if (Array.isArray(content)) {
     return content.map((part) =>
-      part.type === "text" ? { ...part, text: stripControlChars(part.text) } : (
-        part
-      ),
+      part.type === "text" ?
+        { ...part, text: stripControlChars(part.text) }
+      : part,
     )
   }
   return content
@@ -56,6 +76,8 @@ const sanitizeMessages = (messages: Array<Message>): Array<Message> =>
     return sanitized
   })
 
+/* eslint-disable complexity -- coordinates request preparation, retries, and response translation */
+// eslint-disable-next-line max-lines-per-function
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
 ) => {
@@ -79,10 +101,7 @@ export const createChatCompletions = async (
     needsUserContinuation ?
       {
         ...payload,
-        messages: [
-          ...payload.messages,
-          { role: "user", content: "Continue." },
-        ],
+        messages: [...payload.messages, { role: "user", content: "Continue." }],
       }
     : payload
   if (needsUserContinuation) {
@@ -135,18 +154,16 @@ export const createChatCompletions = async (
   // payload) and usually succeeds on retry. Retry those cases with a short
   // exponential backoff; surface every other error immediately so genuine
   // payload problems are never masked. Tune with COPILOT_API_MAX_RETRIES.
-  const url = `${copilotBaseUrl(state)}/chat/completions`
-  const requestBody = JSON.stringify(effectivePayload)
+  const selectedModel = state.models?.data.find(
+    (model) => model.id === effectivePayload.model,
+  )
+  const useResponsesApi = usesResponsesApi(selectedModel)
+  const url = `${copilotBaseUrl(state)}${useResponsesApi ? "/responses" : "/chat/completions"}`
+  const requestBody = JSON.stringify(
+    useResponsesApi ? toResponsesPayload(effectivePayload) : effectivePayload,
+  )
   const maxAttempts =
     Math.max(0, Number(process.env.COPILOT_API_MAX_RETRIES ?? "2")) + 1
-
-  const isBareBadRequest = (status: number, body: string): boolean =>
-    status === 400 && body.trim().toLowerCase() === "bad request"
-  const isRetryableStatus = (status: number): boolean =>
-    status === 429 || (status >= 500 && status <= 599)
-  const backoffMs = (attempt: number): number => 400 * 2 ** (attempt - 1)
-  const sleep = (ms: number): Promise<void> =>
-    new Promise((resolve) => setTimeout(resolve, ms))
 
   let response: Response | undefined
   let lastErrorBody = ""
@@ -199,18 +216,25 @@ export const createChatCompletions = async (
     throw new HTTPError(
       "Failed to create chat completions",
       response
-      ?? new Response(lastErrorBody || "Upstream request failed", {
-        status: 502,
-      }),
+        ?? new Response(lastErrorBody || "Upstream request failed", {
+          status: 502,
+        }),
     )
   }
 
   if (effectivePayload.stream) {
-    return events(response)
+    const eventStream = events(response)
+    return useResponsesApi ? translateResponsesStream(eventStream) : eventStream
   }
 
-  return (await response.json()) as ChatCompletionResponse
+  const responseBody = await response.json()
+  return useResponsesApi ?
+      fromResponsesResult(
+        responseBody as Parameters<typeof fromResponsesResult>[0],
+      )
+    : (responseBody as ChatCompletionResponse)
 }
+/* eslint-enable complexity */
 
 // Streaming types
 
