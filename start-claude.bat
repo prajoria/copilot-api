@@ -40,7 +40,7 @@ if "%USE_NPX%"=="1" (
 powershell -NoProfile -Command "try { $response = Invoke-WebRequest -Uri '%ANTHROPIC_BASE_URL%/' -UseBasicParsing -TimeoutSec 1; if ($response.StatusCode -eq 200) { exit 0 } } catch {}; exit 1"
 if errorlevel 1 (
     echo [start-claude] Starting Copilot API with forced model %CLAUDE_MODEL%...
-    start "Copilot API Proxy (:4141)" /D "%~dp0" cmd /k "set COPILOT_API_FORCE_MODEL=%CLAUDE_MODEL%&& call start.bat"
+    start "Copilot API Proxy (:4141)" /D "%~dp0" cmd /k "set COPILOT_API_FORCE_MODEL=%CLAUDE_MODEL%&& call .\start.bat"
 )
 
 echo [start-claude] Waiting for Copilot API...
