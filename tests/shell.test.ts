@@ -42,3 +42,13 @@ describe.each([
 test("returns the command when there are no environment variables", () => {
   expect(generateEnvScript({}, "claude", "bash")).toBe("claude")
 })
+
+test("Windows shell delegation preserves slash-prefixed Claude arguments", async () => {
+  const launcher = await Bun.file(
+    new URL("../start-claude.sh", import.meta.url),
+  ).text()
+
+  expect(launcher).toContain(
+    'MSYS2_ARG_CONV_EXCL="*" exec cmd.exe /d /c "$WINDOWS_LAUNCHER" "$@"',
+  )
+})

@@ -14,7 +14,7 @@ case "$OS_NAME" in
     fi
 
     WINDOWS_LAUNCHER="$(cygpath -w "$SCRIPT_DIR/start-claude.bat")"
-    exec cmd.exe //d //c "$WINDOWS_LAUNCHER" "$@"
+    MSYS2_ARG_CONV_EXCL="*" exec cmd.exe /d /c "$WINDOWS_LAUNCHER" "$@"
     ;;
   Darwin|Linux)
     ;;
