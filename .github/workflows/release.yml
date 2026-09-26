@@ -51,6 +51,6 @@ jobs:
         run: npm publish --access public --provenance
 
       - name: Create GitHub release
-        run: bunx changelogithub
+        run: bun x changelogithub
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}

@@ -1,3 +1,5 @@
+import type { ServerSentEventMessage } from "fetch-event-stream"
+
 import { type ChatCompletionChunk } from "~/services/copilot/create-chat-completions"
 
 import {
@@ -14,6 +16,37 @@ function isToolBlockOpen(state: AnthropicStreamState): boolean {
   return Object.values(state.toolCalls).some(
     (tc) => tc.anthropicBlockIndex === state.contentBlockIndex,
   )
+}
+
+export async function* translateOpenAIEventStream(
+  response: AsyncIterable<ServerSentEventMessage>,
+): AsyncGenerator<AnthropicStreamEventData> {
+  const state: AnthropicStreamState = {
+    messageStartSent: false,
+    contentBlockIndex: 0,
+    contentBlockOpen: false,
+    toolCalls: {},
+  }
+
+  for await (const rawEvent of response) {
+    if (rawEvent.data === "[DONE]") {
+      return
+    }
+
+    if (!rawEvent.data) {
+      continue
+    }
+
+    const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
+    const events = translateChunkToAnthropicEvents(chunk, state)
+
+    for (const event of events) {
+      yield event
+      if (event.type === "message_stop") {
+        return
+      }
+    }
+  }
 }
 
 // eslint-disable-next-line max-lines-per-function, complexity

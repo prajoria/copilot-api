@@ -9,7 +9,7 @@
 - **Lint:**  
   `bun run lint` (uses @echristian/eslint-config)
 - **Lint & Fix staged files:**  
-  `bunx lint-staged`
+  `bun x lint-staged`
 - **Test all:**  
    `bun test`
 - **Test single file:**  
