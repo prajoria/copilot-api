@@ -14,6 +14,7 @@
 // string literals. Tab/newline/carriage-return are excluded because they are
 // legal structural whitespace between tokens; the fast-path check below uses
 // this to skip well-formed bodies cheaply.
+// eslint-disable-next-line no-control-regex, regexp/control-character-escape
 const ILLEGAL_RAW_CONTROL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/
 
 export function repairJsonBody(text: string): string {
@@ -27,9 +28,7 @@ export function repairJsonBody(text: string): string {
   let inString = false
   let escaped = false
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-
+  for (const ch of text) {
     if (!inString) {
       if (ch === '"') inString = true
       result += ch
@@ -69,6 +68,7 @@ export function repairJsonBody(text: string): string {
 
 // Read a request body as text and parse it tolerantly, repairing raw control
 // characters that would otherwise make `JSON.parse` throw.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function parseJsonBody<T>(text: string): T {
   return JSON.parse(repairJsonBody(text)) as T
 }

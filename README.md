@@ -337,7 +337,41 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 
 This proxy can be used to power [Claude Code](https://docs.anthropic.com/en/claude-code), an experimental conversational AI assistant for developers from Anthropic.
 
-There are two ways to configure Claude Code to use this proxy:
+### One-command launchers
+
+If Claude Code is installed, the platform launcher starts the proxy when
+needed, verifies that `claude-opus-4.8` is available, and launches Claude:
+
+```powershell
+# Windows
+.\start-claude.bat
+```
+
+```sh
+# macOS or Linux
+chmod +x ./start-claude.sh
+./start-claude.sh
+```
+
+Additional arguments are forwarded to Claude Code. Override the model on
+macOS or Linux with `CLAUDE_MODEL=another-model ./start-claude.sh`. On Windows,
+run `set CLAUDE_MODEL=another-model` in Command Prompt before launching the
+batch file.
+
+Install Claude Code globally with Node.js 20 or newer:
+
+```sh
+npm install --global @anthropic-ai/claude-code
+claude
+```
+
+The first `claude` run guides you through authentication. If Claude Code is
+not installed globally, both launchers automatically use
+`npx -y @anthropic-ai/claude-code`; this downloads and runs the official npm
+package without a global installation. Bun is still required to run this
+repository's proxy from source.
+
+There are also two manual ways to configure Claude Code:
 
 ### Setup with the `--claude-code` flag
 

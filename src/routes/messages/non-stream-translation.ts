@@ -58,9 +58,9 @@ function translateModelName(model: string): string {
   // Anthropic-style ids use dashes (claude-opus-4-6); Copilot uses dots
   // (claude-opus-4.6). Convert the minor-version separator and preserve any
   // suffix such as "-1m". Already-dotted ids pass through unchanged.
-  const match = model.match(/^(claude-(?:opus|sonnet|haiku)-\d+)-(\d+)(.*)$/)
+  const match = model.match(/^(claude-(?:opus|sonnet|haiku)-\d+)-(\d+)/)
   if (match) {
-    return `${match[1]}.${match[2]}${match[3]}`
+    return `${match[1]}.${match[2]}${model.slice(match[0].length)}`
   }
   return model
 }
