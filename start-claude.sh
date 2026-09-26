@@ -11,15 +11,21 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-if command -v claude >/dev/null 2>&1; then
+if command -v claude >/dev/null 2>&1 && claude --version >/dev/null 2>&1; then
   claude_command=(claude)
 elif command -v npx >/dev/null 2>&1; then
-  echo "[start-claude] Claude Code is not installed globally; using npx."
-  claude_command=(npx -y @anthropic-ai/claude-code)
+  echo "[start-claude] Installed Claude Code is missing or broken; using the latest package through npx."
+  claude_command=(
+    npx
+    --yes
+    --package=@anthropic-ai/claude-code@latest
+    --
+    claude
+  )
 else
-  echo "[start-claude] Claude Code was not found." >&2
+  echo "[start-claude] A working Claude Code installation was not found." >&2
   echo "Install it with: npm install --global @anthropic-ai/claude-code" >&2
-  echo "Or install Node.js 20+ and rerun this script to use npx." >&2
+  echo "Or install Node.js 22+ and rerun this script to use npx." >&2
   exit 1
 fi
 

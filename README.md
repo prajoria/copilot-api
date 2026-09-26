@@ -358,7 +358,7 @@ macOS or Linux with `CLAUDE_MODEL=another-model ./start-claude.sh`. On Windows,
 run `set CLAUDE_MODEL=another-model` in Command Prompt before launching the
 batch file.
 
-Install Claude Code globally with Node.js 20 or newer:
+Install Claude Code globally with Node.js 22 or newer:
 
 ```sh
 npm install --global @anthropic-ai/claude-code
@@ -366,10 +366,19 @@ claude
 ```
 
 The first `claude` run guides you through authentication. If Claude Code is
-not installed globally, both launchers automatically use
-`npx -y @anthropic-ai/claude-code`; this downloads and runs the official npm
-package without a global installation. Bun is still required to run this
-repository's proxy from source.
+not installed globally—or its installed executable is broken—both launchers
+automatically use
+`npx --yes --package=@anthropic-ai/claude-code@latest -- claude`. This
+downloads and runs the latest official npm package without a global
+installation. To repair a broken global installation, run:
+
+```sh
+npm uninstall --global @anthropic-ai/claude-code
+npm install --global @anthropic-ai/claude-code@latest
+claude --version
+```
+
+Bun is still required to run this repository's proxy from source.
 
 There are also two manual ways to configure Claude Code:
 

@@ -19,18 +19,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "USE_NPX=0"
+set "USE_NPX=1"
 where claude >nul 2>&1
-if errorlevel 1 (
+if not errorlevel 1 (
+    call claude --version >nul 2>&1
+    if not errorlevel 1 set "USE_NPX=0"
+)
+
+if "%USE_NPX%"=="1" (
     where npx >nul 2>&1
     if errorlevel 1 (
-        echo [start-claude] Claude Code was not found.
+        echo [start-claude] A working Claude Code installation was not found.
         echo Install it with: npm install --global @anthropic-ai/claude-code
-        echo Or install Node.js 20+ and rerun this script to use npx without a global install.
+        echo Or install Node.js 22+ and rerun this script to use npx without a global install.
         exit /b 1
     )
-    set "USE_NPX=1"
-    echo [start-claude] Claude Code is not installed globally; using npx.
+    echo [start-claude] Installed Claude Code is missing or broken; using the latest package through npx.
 )
 
 powershell -NoProfile -Command "try { $response = Invoke-WebRequest -Uri '%ANTHROPIC_BASE_URL%/' -UseBasicParsing -TimeoutSec 1; if ($response.StatusCode -eq 200) { exit 0 } } catch {}; exit 1"
@@ -51,7 +55,7 @@ if errorlevel 1 exit /b 1
 
 echo [start-claude] Launching Claude Code with %CLAUDE_MODEL%...
 if "%USE_NPX%"=="1" (
-    call npx -y @anthropic-ai/claude-code --model "%CLAUDE_MODEL%" %*
+    call npx --yes --package=@anthropic-ai/claude-code@latest -- claude --model "%CLAUDE_MODEL%" %*
 ) else (
     call claude --model "%CLAUDE_MODEL%" %*
 )
