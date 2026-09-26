@@ -1,35 +1,29 @@
-import { execSync } from "node:child_process"
 import process from "node:process"
 
-type ShellName = "bash" | "zsh" | "fish" | "powershell" | "cmd" | "sh"
+export type ShellName = "bash" | "zsh" | "fish" | "powershell" | "cmd" | "sh"
 type EnvVars = Record<string, string | undefined>
 
 function getShell(): ShellName {
-  const { platform, ppid, env } = process
+  const { platform, env } = process
 
   if (platform === "win32") {
-    try {
-      const command = `wmic process get ParentProcessId,Name | findstr "${ppid}"`
-      const parentProcess = execSync(command, { stdio: "pipe" }).toString()
-
-      if (parentProcess.toLowerCase().includes("powershell.exe")) {
-        return "powershell"
-      }
-    } catch {
-      return "cmd"
-    }
-
-    return "cmd"
-  } else {
-    const shellPath = env.SHELL
-    if (shellPath) {
-      if (shellPath.endsWith("zsh")) return "zsh"
-      if (shellPath.endsWith("fish")) return "fish"
-      if (shellPath.endsWith("bash")) return "bash"
-    }
-
-    return "sh"
+    return "powershell"
   }
+
+  const shellPath = env.SHELL
+  if (shellPath?.endsWith("zsh")) return "zsh"
+  if (shellPath?.endsWith("fish")) return "fish"
+  if (shellPath?.endsWith("bash")) return "bash"
+
+  return "sh"
+}
+
+function quotePosix(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`
+}
+
+function quotePowerShell(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`
 }
 
 /**
@@ -42,8 +36,8 @@ function getShell(): ShellName {
 export function generateEnvScript(
   envVars: EnvVars,
   commandToRun: string = "",
+  shell: ShellName = getShell(),
 ): string {
-  const shell = getShell()
   const filteredEnvVars = Object.entries(envVars).filter(
     ([, value]) => value !== undefined,
   ) as Array<[string, string]>
@@ -53,26 +47,26 @@ export function generateEnvScript(
   switch (shell) {
     case "powershell": {
       commandBlock = filteredEnvVars
-        .map(([key, value]) => `$env:${key} = ${value}`)
+        .map(([key, value]) => `$env:${key} = ${quotePowerShell(value)}`)
         .join("; ")
       break
     }
     case "cmd": {
       commandBlock = filteredEnvVars
-        .map(([key, value]) => `set ${key}=${value}`)
+        .map(([key, value]) => `set "${key}=${value}"`)
         .join(" & ")
       break
     }
     case "fish": {
       commandBlock = filteredEnvVars
-        .map(([key, value]) => `set -gx ${key} ${value}`)
+        .map(([key, value]) => `set -gx ${key} ${quotePosix(value)}`)
         .join("; ")
       break
     }
     default: {
       // bash, zsh, sh
       const assignments = filteredEnvVars
-        .map(([key, value]) => `${key}=${value}`)
+        .map(([key, value]) => `${key}=${quotePosix(value)}`)
         .join(" ")
       commandBlock = filteredEnvVars.length > 0 ? `export ${assignments}` : ""
       break

@@ -1,12 +1,7 @@
 import { defineCommand } from "citty"
 import consola from "consola"
 
-import { ensurePaths } from "./lib/paths"
-import { setupGitHubToken } from "./lib/token"
-import {
-  getCopilotUsage,
-  type QuotaDetail,
-} from "./services/github/get-copilot-usage"
+import type { QuotaDetail } from "./services/github/get-copilot-usage"
 
 export const checkUsage = defineCommand({
   meta: {
@@ -14,6 +9,13 @@ export const checkUsage = defineCommand({
     description: "Show current GitHub Copilot usage/quota information",
   },
   async run() {
+    const [{ ensurePaths }, { setupGitHubToken }, { getCopilotUsage }] =
+      await Promise.all([
+        import("./lib/paths"),
+        import("./lib/token"),
+        import("./services/github/get-copilot-usage"),
+      ])
+
     await ensurePaths()
     await setupGitHubToken()
     try {

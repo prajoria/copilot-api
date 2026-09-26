@@ -5,7 +5,7 @@ import { defineCommand, runMain } from "citty"
 import { auth } from "./auth"
 import { checkUsage } from "./check-usage"
 import { debug } from "./debug"
-import { start } from "./start"
+import { start } from "./start-command"
 
 const main = defineCommand({
   meta: {

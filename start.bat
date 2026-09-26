@@ -1,20 +1,28 @@
 @echo off
+setlocal
 echo ================================================
-echo GitHub Copilot API Server with Usage Viewer
+echo GitHub Copilot API Server
 echo ================================================
 echo.
 
-if not exist node_modules (
-    echo Installing dependencies...
-    bun install
-    echo.
+where bun >nul 2>&1
+if errorlevel 1 (
+    echo Bun is required. Install it from https://bun.sh/docs/installation
+    exit /b 1
 )
 
-echo Starting server...
-echo The usage viewer page will open automatically after the server starts
+echo Installing dependencies from bun.lock...
+call bun install --frozen-lockfile
+if errorlevel 1 exit /b %errorlevel%
+
+echo Building production CLI...
+call bun run build
+if errorlevel 1 exit /b %errorlevel%
+
+echo Starting server in production mode...
+echo The usage viewer will open in your default browser.
 echo.
 
 start "" "https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage"
-bun run dev
-
-pause
+call bun run .\dist\main.js start %*
+exit /b %errorlevel%

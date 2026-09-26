@@ -3,16 +3,19 @@
 import { defineCommand } from "citty"
 import consola from "consola"
 
-import { PATHS, ensurePaths } from "./lib/paths"
-import { state } from "./lib/state"
-import { setupGitHubToken } from "./lib/token"
-
 interface RunAuthOptions {
   verbose: boolean
   showToken: boolean
 }
 
 export async function runAuth(options: RunAuthOptions): Promise<void> {
+  const [{ PATHS, ensurePaths }, { state }, { setupGitHubToken }] =
+    await Promise.all([
+      import("./lib/paths"),
+      import("./lib/state"),
+      import("./lib/token"),
+    ])
+
   if (options.verbose) {
     consola.level = 5
     consola.info("Verbose logging enabled")

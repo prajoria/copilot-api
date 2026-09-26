@@ -1,0 +1,15 @@
+services:
+  copilot-api:
+    build:
+      context: .
+    image: copilot-api:local
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+    ports:
+      - "4141:4141"
+    volumes:
+      - copilot-data:/home/bun/.local/share/copilot-api
+    restart: unless-stopped
+
+volumes:
+  copilot-data:

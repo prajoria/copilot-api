@@ -30,7 +30,7 @@
     "prepack": "bun run build",
     "prepare": "simple-git-hooks",
     "release": "bumpp && bun publish --access public",
-    "start": "NODE_ENV=production bun run ./src/main.ts",
+    "start": "bun run ./src/main.ts",
     "typecheck": "tsc"
   },
   "simple-git-hooks": {
@@ -64,5 +64,8 @@
     "simple-git-hooks": "^2.13.1",
     "tsdown": "^0.15.6",
     "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
