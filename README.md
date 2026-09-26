@@ -103,6 +103,8 @@ chmod +x ./start.sh
 
 Both source launchers install the locked dependencies, build the production
 bundle, and forward additional arguments to `copilot-api start`.
+When `start.sh` is invoked from Git Bash, MSYS2, or Cygwin on Windows, it
+detects the Windows host and delegates to `start.bat` automatically.
 
 ## Deploy with Docker
 
@@ -356,7 +358,8 @@ chmod +x ./start-claude.sh
 Additional arguments are forwarded to Claude Code. Override the model on
 macOS or Linux with `CLAUDE_MODEL=another-model ./start-claude.sh`. On Windows,
 run `set CLAUDE_MODEL=another-model` in Command Prompt before launching the
-batch file.
+batch file. Invoking `start-claude.sh` from Git Bash, MSYS2, or Cygwin also
+detects Windows and delegates to `start-claude.bat` automatically.
 
 Install Claude Code globally with Node.js 22 or newer:
 

@@ -4,6 +4,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_MODEL="${CLAUDE_MODEL:-claude-opus-4.8}"
 ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4141}"
+OS_NAME="$(uname -s)"
+
+case "$OS_NAME" in
+  CYGWIN*|MINGW*|MSYS*)
+    if ! command -v cygpath >/dev/null 2>&1 || ! command -v cmd.exe >/dev/null 2>&1; then
+      echo "[start-claude] Windows compatibility shell detected, but cygpath or cmd.exe is unavailable." >&2
+      exit 1
+    fi
+
+    WINDOWS_LAUNCHER="$(cygpath -w "$SCRIPT_DIR/start-claude.bat")"
+    MSYS2_ARG_CONV_EXCL="*" exec cmd.exe /d /c "$WINDOWS_LAUNCHER" "$@"
+    ;;
+  Darwin|Linux)
+    ;;
+  *)
+    echo "[start-claude] Unsupported operating system: $OS_NAME" >&2
+    exit 1
+    ;;
+esac
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "[start-claude] Bun is required to run the proxy from source." >&2

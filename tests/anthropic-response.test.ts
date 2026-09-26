@@ -8,7 +8,10 @@ import type {
 
 import { type AnthropicStreamState } from "~/routes/messages/anthropic-types"
 import { translateToAnthropic } from "~/routes/messages/non-stream-translation"
-import { translateChunkToAnthropicEvents } from "~/routes/messages/stream-translation"
+import {
+  translateChunkToAnthropicEvents,
+  translateOpenAIEventStream,
+} from "~/routes/messages/stream-translation"
 
 const anthropicUsageSchema = z.object({
   input_tokens: z.number().int(),
@@ -191,6 +194,52 @@ describe("OpenAI to Anthropic Non-Streaming Response Translation", () => {
   })
 })
 
+// eslint-disable-next-line @typescript-eslint/require-await
+async function* terminalUpstream() {
+  yield {
+    data: JSON.stringify({
+      id: "cmpl-terminal",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "claude-opus-4.8",
+      choices: [
+        {
+          index: 0,
+          delta: { content: "Done" },
+          finish_reason: null,
+          logprobs: null,
+        },
+      ],
+    }),
+  }
+  yield {
+    data: JSON.stringify({
+      id: "cmpl-terminal",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "claude-opus-4.8",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "stop",
+          logprobs: null,
+        },
+      ],
+    }),
+  }
+  throw new Error("upstream dropped after finish")
+}
+
+test("closes after message_stop without waiting for upstream DONE", async () => {
+  const events = []
+  for await (const event of translateOpenAIEventStream(terminalUpstream())) {
+    events.push(event)
+  }
+
+  expect(events.at(-1)?.type).toBe("message_stop")
+})
+
 describe("OpenAI to Anthropic Streaming Response Translation", () => {
   test("should translate a simple text stream correctly", () => {
     const openAIStream: Array<ChatCompletionChunk> = [
@@ -260,6 +309,7 @@ describe("OpenAI to Anthropic Streaming Response Translation", () => {
     for (const event of translatedStream) {
       expect(isValidAnthropicStreamEvent(event)).toBe(true)
     }
+    expect(translatedStream.at(-1)?.type).toBe("message_stop")
   })
 
   test("should translate a stream with tool calls", () => {
