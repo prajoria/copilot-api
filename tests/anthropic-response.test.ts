@@ -231,13 +231,53 @@ async function* terminalUpstream() {
   throw new Error("upstream dropped after finish")
 }
 
-test("closes after message_stop without waiting for upstream DONE", async () => {
+async function* terminalUpstreamWithDone(onDoneRead: () => void) {
+  yield* terminalUpstreamChunks()
+  onDoneRead()
+  yield { data: "[DONE]" }
+}
+
+// eslint-disable-next-line @typescript-eslint/require-await
+async function* terminalUpstreamChunks() {
+  yield {
+    data: JSON.stringify({
+      id: "cmpl-terminal",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "claude-opus-4.8",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "stop",
+          logprobs: null,
+        },
+      ],
+    }),
+  }
+}
+
+test("ignores upstream errors after message_stop", async () => {
   const events = []
   for await (const event of translateOpenAIEventStream(terminalUpstream())) {
     events.push(event)
   }
 
   expect(events.at(-1)?.type).toBe("message_stop")
+})
+
+test("drains a completed upstream stream through DONE", async () => {
+  let doneRead = false
+
+  for await (const _event of translateOpenAIEventStream(
+    terminalUpstreamWithDone(() => {
+      doneRead = true
+    }),
+  )) {
+    // Consume the translated stream.
+  }
+
+  expect(doneRead).toBe(true)
 })
 
 describe("OpenAI to Anthropic Streaming Response Translation", () => {
