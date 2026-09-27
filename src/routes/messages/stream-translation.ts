@@ -27,24 +27,34 @@ export async function* translateOpenAIEventStream(
     contentBlockOpen: false,
     toolCalls: {},
   }
+  let messageStopped = false
 
-  for await (const rawEvent of response) {
-    if (rawEvent.data === "[DONE]") {
-      return
-    }
-
-    if (!rawEvent.data) {
-      continue
-    }
-
-    const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
-    const events = translateChunkToAnthropicEvents(chunk, state)
-
-    for (const event of events) {
-      yield event
-      if (event.type === "message_stop") {
+  // Drain through [DONE] so completing the Anthropic stream does not abandon
+  // the upstream reader. Failures after message_stop cannot invalidate output.
+  try {
+    for await (const rawEvent of response) {
+      if (rawEvent.data === "[DONE]") {
         return
       }
+
+      if (messageStopped || !rawEvent.data) {
+        continue
+      }
+
+      const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
+      const events = translateChunkToAnthropicEvents(chunk, state)
+
+      for (const event of events) {
+        yield event
+        if (event.type === "message_stop") {
+          messageStopped = true
+          break
+        }
+      }
+    }
+  } catch (error) {
+    if (!messageStopped) {
+      throw error
     }
   }
 }
