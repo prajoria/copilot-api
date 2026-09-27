@@ -10,6 +10,8 @@ import { setupCopilotToken, setupGitHubToken } from "./lib/token"
 import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
 import { server } from "./server"
 
+export const SERVER_IDLE_TIMEOUT_SECONDS = 255
+
 export interface RunServerOptions {
   port: number
   verbose: boolean
@@ -114,6 +116,9 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     fetch: server.fetch as ServerHandler,
     port: options.port,
     silent: true,
+    bun: {
+      idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
+    },
   })
 
   consola.success(`Listening on ${serverUrl}/ (all interfaces)`)
