@@ -19,12 +19,15 @@ export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
   let payload = parseJsonBody<ChatCompletionsPayload>(await c.req.text())
-  consola.debug("Request payload:", JSON.stringify(payload).slice(-400))
+  consola.debug("Chat completion request received", {
+    messageCount: payload.messages.length,
+    stream: Boolean(payload.stream),
+  })
 
   // Hard override: route every request to COPILOT_API_FORCE_MODEL if set.
   const forcedModel = process.env.COPILOT_API_FORCE_MODEL
   if (forcedModel && forcedModel.length > 0 && payload.model !== forcedModel) {
-    consola.debug(`Forcing model ${payload.model} -> ${forcedModel}`)
+    consola.debug("Applying forced model override")
     payload = { ...payload, model: forcedModel }
   }
 
@@ -41,8 +44,10 @@ export async function handleCompletion(c: Context) {
     } else {
       consola.warn("No model selected, skipping token count calculation")
     }
-  } catch (error) {
-    consola.warn("Failed to calculate token count:", error)
+  } catch {
+    consola.warn("Failed to calculate token count", {
+      category: "token_count_error",
+    })
   }
 
   if (state.manualApprove) await awaitApproval()
@@ -52,20 +57,19 @@ export async function handleCompletion(c: Context) {
       ...payload,
       max_tokens: selectedModel?.capabilities.limits.max_output_tokens,
     }
-    consola.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
+    consola.debug("Applied default max token limit")
   }
 
   const response = await createChatCompletions(payload)
 
   if (isNonStreaming(response)) {
-    consola.debug("Non-streaming response:", JSON.stringify(response))
+    consola.debug("Non-streaming response received")
     return c.json(response)
   }
 
   consola.debug("Streaming response")
   return streamSSE(c, async (stream) => {
     for await (const chunk of response) {
-      consola.debug("Streaming chunk:", JSON.stringify(chunk))
       await stream.writeSSE(chunk as SSEMessage)
     }
   })

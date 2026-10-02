@@ -1,8 +1,27 @@
 import { defineCommand } from "citty"
 
 import type { ShellName } from "./lib/shell"
+import type { RunServerOptions } from "./start"
 
 const DEFAULT_CLAUDE_MODEL = "claude-opus-4.8"
+export const DEFAULT_HOST = "127.0.0.1"
+
+interface StartCommandArgs {
+  host: string
+  port: string
+  verbose: boolean
+  "account-type": string
+  manual: boolean
+  "rate-limit"?: string
+  wait: boolean
+  "github-token"?: string
+  "claude-code": boolean
+  "claude-model": string
+  "claude-small-model": string
+  "claude-shell": string
+  "show-token": boolean
+  "proxy-env": boolean
+}
 
 function parseShellName(value: string): ShellName {
   switch (value) {
@@ -28,6 +47,11 @@ export const start = defineCommand({
     description: "Start the Copilot API server",
   },
   args: {
+    host: {
+      type: "string",
+      default: DEFAULT_HOST,
+      description: "Host to listen on",
+    },
     port: {
       alias: "p",
       type: "string",
@@ -95,7 +119,7 @@ export const start = defineCommand({
     "show-token": {
       type: "boolean",
       default: false,
-      description: "Show GitHub and Copilot tokens on fetch and refresh",
+      description: "Deprecated; token values are never logged",
     },
     "proxy-env": {
       type: "boolean",
@@ -104,26 +128,33 @@ export const start = defineCommand({
     },
   },
   async run({ args }) {
-    const rateLimitRaw = args["rate-limit"]
-    const rateLimit =
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      rateLimitRaw === undefined ? undefined : Number.parseInt(rateLimitRaw, 10)
     const { runServer } = await import("./start")
 
-    return runServer({
-      port: Number.parseInt(args.port, 10),
-      verbose: args.verbose,
-      accountType: args["account-type"],
-      manual: args.manual,
-      rateLimit,
-      rateLimitWait: args.wait,
-      githubToken: args["github-token"],
-      claudeCode: args["claude-code"],
-      claudeModel: args["claude-model"],
-      claudeSmallModel: args["claude-small-model"],
-      claudeShell: parseShellName(args["claude-shell"]),
-      showToken: args["show-token"],
-      proxyEnv: args["proxy-env"],
-    })
+    return runServer(createRunServerOptions(args))
   },
 })
+
+export function createRunServerOptions(
+  args: StartCommandArgs,
+): RunServerOptions {
+  const rateLimitRaw = args["rate-limit"]
+  const rateLimit =
+    rateLimitRaw === undefined ? undefined : Number.parseInt(rateLimitRaw, 10)
+
+  return {
+    host: args.host,
+    port: Number.parseInt(args.port, 10),
+    verbose: args.verbose,
+    accountType: args["account-type"],
+    manual: args.manual,
+    rateLimit,
+    rateLimitWait: args.wait,
+    githubToken: args["github-token"],
+    claudeCode: args["claude-code"],
+    claudeModel: args["claude-model"],
+    claudeSmallModel: args["claude-small-model"],
+    claudeShell: parseShellName(args["claude-shell"]),
+    showToken: args["show-token"],
+    proxyEnv: args["proxy-env"],
+  }
+}

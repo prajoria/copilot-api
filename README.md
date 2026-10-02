@@ -166,6 +166,9 @@ docker run -d --name copilot-api --restart unless-stopped \
   copilot-api start
 ```
 
+The container entrypoint binds to `0.0.0.0` by default so published ports are
+reachable. Pass `--host` explicitly to override the container default.
+
 PowerShell accepts the same commands when each multi-line command is entered
 on one line. To use an environment token instead:
 
@@ -207,6 +210,7 @@ The following command line options are available for the `start` command:
 
 | Option         | Description                                                                   | Default    | Alias |
 | -------------- | ----------------------------------------------------------------------------- | ---------- | ----- |
+| --host         | Host interface to listen on                                                   | 127.0.0.1  | none  |
 | --port         | Port to listen on                                                             | 4141       | -p    |
 | --verbose      | Enable verbose logging                                                        | false      | -v    |
 | --account-type | Account type to use (individual, business, enterprise)                        | individual | -a    |

@@ -9,12 +9,11 @@ interface RunAuthOptions {
 }
 
 export async function runAuth(options: RunAuthOptions): Promise<void> {
-  const [{ PATHS, ensurePaths }, { state }, { setupGitHubToken }] =
-    await Promise.all([
-      import("./lib/paths"),
-      import("./lib/state"),
-      import("./lib/token"),
-    ])
+  const [{ ensurePaths }, { state }, { setupGitHubToken }] = await Promise.all([
+    import("./lib/paths"),
+    import("./lib/state"),
+    import("./lib/token"),
+  ])
 
   if (options.verbose) {
     consola.level = 5
@@ -22,10 +21,13 @@ export async function runAuth(options: RunAuthOptions): Promise<void> {
   }
 
   state.showToken = options.showToken
+  if (options.showToken) {
+    consola.warn("Token display is disabled for security.")
+  }
 
   await ensurePaths()
   await setupGitHubToken({ force: true })
-  consola.success("GitHub token written to", PATHS.GITHUB_TOKEN_PATH)
+  consola.success("GitHub token stored")
 }
 
 export const auth = defineCommand({
@@ -43,7 +45,7 @@ export const auth = defineCommand({
     "show-token": {
       type: "boolean",
       default: false,
-      description: "Show GitHub token on auth",
+      description: "Deprecated; token values are never logged",
     },
   },
   run({ args }) {

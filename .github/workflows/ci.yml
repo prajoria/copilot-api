@@ -38,6 +38,10 @@ jobs:
       - name: Run tests
         run: bun test
 
+      - name: Test container entrypoint
+        if: runner.os == 'Linux'
+        run: bun run test:entrypoint
+
       - name: Build
         run: bun run build
 
