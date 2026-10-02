@@ -3,6 +3,7 @@ import { events } from "fetch-event-stream"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { sanitizeLogIdentifier, upstreamErrorMetadata } from "~/lib/logging"
 import { state } from "~/lib/state"
 
 import {
@@ -143,7 +144,7 @@ export const createChatCompletions = async (
   // of truth for "which model is actually talking" — clients like Claude Code
   // do not always show it.
   consola.info(
-    `Using model: ${effectivePayload.model} (initiator: ${isAgentCall ? "agent" : "user"}, stream: ${Boolean(effectivePayload.stream)})`,
+    `Using model: ${sanitizeLogIdentifier(effectivePayload.model)} (initiator: ${isAgentCall ? "agent" : "user"}, stream: ${Boolean(effectivePayload.stream)})`,
   )
 
   // Transient upstream failures are common on the Copilot edge: sporadic
@@ -179,7 +180,7 @@ export const createChatCompletions = async (
       if (attempt < maxAttempts) {
         const delay = backoffMs(attempt)
         consola.warn(
-          `Upstream fetch threw (${(networkError as Error).message}); retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
+          `Upstream network error; retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
         )
         await sleep(delay)
         continue
@@ -189,9 +190,8 @@ export const createChatCompletions = async (
 
     if (response.ok) break
 
-    // Read the upstream body from a clone so the real failure reason is
-    // visible immediately and so we can decide whether the failure is
-    // transient. The original `response` is left intact for `forwardError`.
+    // Read the upstream body from a clone only to classify retryable failures.
+    // The original response remains intact for forwarding to the client.
     lastErrorBody = await response.clone().text()
     const transient =
       isRetryableStatus(response.status)
@@ -199,7 +199,7 @@ export const createChatCompletions = async (
     if (transient && attempt < maxAttempts) {
       const delay = backoffMs(attempt)
       consola.warn(
-        `Upstream ${response.status} ${response.statusText} (transient); retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
+        `Upstream ${response.status} (transient); retry ${attempt}/${maxAttempts - 1} in ${delay}ms`,
       )
       await sleep(delay)
       continue
@@ -208,11 +208,17 @@ export const createChatCompletions = async (
   }
 
   if (!response || !response.ok) {
-    consola.error("Failed to create chat completions", {
-      status: response?.status,
-      statusText: response?.statusText,
-      body: lastErrorBody,
-    })
+    if (response) {
+      consola.error(
+        "Failed to create chat completions",
+        upstreamErrorMetadata(response, "chat_completions"),
+      )
+    } else {
+      consola.error("Failed to create chat completions", {
+        category: "chat_completions",
+        status: 502,
+      })
+    }
     throw new HTTPError(
       "Failed to create chat completions",
       response

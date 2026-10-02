@@ -5,6 +5,7 @@ import {
   GITHUB_CLIENT_ID,
   standardHeaders,
 } from "~/lib/api-config"
+import { upstreamErrorMetadata } from "~/lib/logging"
 import { sleep } from "~/lib/utils"
 
 import type { DeviceCodeResponse } from "./get-device-code"
@@ -33,13 +34,16 @@ export async function pollAccessToken(
 
     if (!response.ok) {
       await sleep(sleepDuration)
-      consola.error("Failed to poll access token:", await response.text())
+      consola.error(
+        "Failed to poll access token",
+        upstreamErrorMetadata(response, "access_token_poll"),
+      )
 
       continue
     }
 
     const json = await response.json()
-    consola.debug("Polling access token response:", json)
+    consola.debug("Access token poll completed")
 
     const { access_token } = json as AccessTokenResponse
 

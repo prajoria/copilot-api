@@ -1,8 +1,9 @@
-import type { ServerHandler } from "srvx"
+import type { ServerHandler, ServerOptions } from "srvx"
 
 import consola from "consola"
 import invariant from "tiny-invariant"
 
+import { sanitizeLogIdentifier } from "./lib/logging"
 import { ensurePaths } from "./lib/paths"
 import { generateEnvScript, type ShellName } from "./lib/shell"
 import { state } from "./lib/state"
@@ -13,6 +14,7 @@ import { server } from "./server"
 export const SERVER_IDLE_TIMEOUT_SECONDS = 255
 
 export interface RunServerOptions {
+  host: string
   port: number
   verbose: boolean
   accountType: string
@@ -41,13 +43,18 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   state.accountType = options.accountType
   if (options.accountType !== "individual") {
-    consola.info(`Using ${options.accountType} plan GitHub account`)
+    consola.info(
+      `Using ${sanitizeLogIdentifier(options.accountType)} plan GitHub account`,
+    )
   }
 
   state.manualApprove = options.manual
   state.rateLimitSeconds = options.rateLimit
   state.rateLimitWait = options.rateLimitWait
   state.showToken = options.showToken
+  if (options.showToken) {
+    consola.warn("Token display is disabled for security.")
+  }
 
   await ensurePaths()
   await cacheVSCodeVersion()
@@ -62,38 +69,29 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   await setupCopilotToken()
   await cacheModels()
 
-  consola.info(
-    `Available models: \n${state.models?.data.map((model) => `- ${model.id}`).join("\n")}`,
-  )
+  consola.info(`Available model count: ${state.models?.data.length ?? 0}`)
 
-  const serverUrl = `http://localhost:${options.port}`
+  const serverUrl = formatServerUrl(options.host, options.port)
+  const safeServerUrl = formatServerUrl(
+    sanitizeLogIdentifier(options.host),
+    options.port,
+  )
 
   if (options.claudeCode) {
     invariant(state.models, "Models should be loaded by now")
-    const availableModelIds = state.models.data.map((model) => model.id)
-    invariant(
-      availableModelIds.includes(options.claudeModel),
-      `Claude Code model "${options.claudeModel}" is unavailable. Available models: ${availableModelIds.join(", ")}`,
+    const availableModelIds = new Set(
+      state.models.data.map((model) => model.id),
     )
     invariant(
-      availableModelIds.includes(options.claudeSmallModel),
-      `Claude Code small model "${options.claudeSmallModel}" is unavailable. Available models: ${availableModelIds.join(", ")}`,
+      availableModelIds.has(options.claudeModel),
+      "Configured Claude Code model is unavailable.",
+    )
+    invariant(
+      availableModelIds.has(options.claudeSmallModel),
+      "Configured Claude Code small model is unavailable.",
     )
 
-    const command = generateEnvScript(
-      {
-        ANTHROPIC_BASE_URL: serverUrl,
-        ANTHROPIC_AUTH_TOKEN: "dummy",
-        ANTHROPIC_MODEL: options.claudeModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: options.claudeModel,
-        ANTHROPIC_SMALL_FAST_MODEL: options.claudeSmallModel,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: options.claudeSmallModel,
-        DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      },
-      "claude",
-      options.claudeShell,
-    )
+    const command = createClaudeCommand(options, serverUrl)
 
     try {
       const { default: clipboard } = await import("clipboardy")
@@ -103,23 +101,65 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       consola.warn(
         "Failed to copy to clipboard. Here is the Claude Code command:",
       )
-      consola.log(command)
+      consola.log(
+        createClaudeCommand(
+          {
+            ...options,
+            claudeModel: sanitizeLogIdentifier(options.claudeModel),
+            claudeSmallModel: sanitizeLogIdentifier(options.claudeSmallModel),
+          },
+          safeServerUrl,
+        ),
+      )
     }
   }
 
   consola.info(
-    `Usage Viewer: https://ericc-ch.github.io/copilot-api?endpoint=${serverUrl}/usage`,
+    `Usage Viewer: https://ericc-ch.github.io/copilot-api?endpoint=${safeServerUrl}/usage`,
   )
 
   const { serve } = await import("srvx")
-  serve({
+  serve(createServeOptions(options.host, options.port))
+
+  consola.success(`Listening on ${safeServerUrl}/`)
+}
+
+export function formatServerUrl(hostname: string, port: number): string {
+  const urlHostname = hostname.includes(":") ? `[${hostname}]` : hostname
+  return `http://${urlHostname}:${port}`
+}
+
+function createClaudeCommand(
+  options: RunServerOptions,
+  serverUrl: string,
+): string {
+  return generateEnvScript(
+    {
+      ANTHROPIC_BASE_URL: serverUrl,
+      ANTHROPIC_AUTH_TOKEN: "dummy",
+      ANTHROPIC_MODEL: options.claudeModel,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: options.claudeModel,
+      ANTHROPIC_SMALL_FAST_MODEL: options.claudeSmallModel,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: options.claudeSmallModel,
+      DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    },
+    "claude",
+    options.claudeShell,
+  )
+}
+
+export function createServeOptions(
+  hostname: string,
+  port: number,
+): ServerOptions {
+  return {
     fetch: server.fetch as ServerHandler,
-    port: options.port,
+    hostname,
+    port,
     silent: true,
     bun: {
       idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     },
-  })
-
-  consola.success(`Listening on ${serverUrl}/ (all interfaces)`)
+  }
 }

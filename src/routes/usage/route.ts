@@ -8,8 +8,10 @@ usageRoute.get("/", async (c) => {
   try {
     const usage = await getCopilotUsage()
     return c.json(usage)
-  } catch (error) {
-    console.error("Error fetching Copilot usage:", error)
+  } catch {
+    console.error("Error fetching Copilot usage", {
+      category: "copilot_usage_error",
+    })
     return c.json({ error: "Failed to fetch Copilot usage" }, 500)
   }
 })

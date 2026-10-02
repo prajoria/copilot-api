@@ -25,13 +25,12 @@ export async function handleCompletion(c: Context) {
   const anthropicPayload = parseJsonBody<AnthropicMessagesPayload>(
     await c.req.text(),
   )
-  consola.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
+  consola.debug("Anthropic request received", {
+    messageCount: anthropicPayload.messages.length,
+    stream: Boolean(anthropicPayload.stream),
+  })
 
   const openAIPayload = translateToOpenAI(anthropicPayload)
-  consola.debug(
-    "Translated OpenAI request payload:",
-    JSON.stringify(openAIPayload),
-  )
 
   if (state.manualApprove) {
     await awaitApproval()
@@ -40,22 +39,14 @@ export async function handleCompletion(c: Context) {
   const response = await createChatCompletions(openAIPayload)
 
   if (isNonStreaming(response)) {
-    consola.debug(
-      "Non-streaming response from Copilot:",
-      JSON.stringify(response).slice(-400),
-    )
+    consola.debug("Non-streaming Anthropic response received")
     const anthropicResponse = translateToAnthropic(response)
-    consola.debug(
-      "Translated Anthropic response:",
-      JSON.stringify(anthropicResponse),
-    )
     return c.json(anthropicResponse)
   }
 
   consola.debug("Streaming response from Copilot")
   return streamSSE(c, async (stream) => {
     for await (const event of translateOpenAIEventStream(response)) {
-      consola.debug("Translated Anthropic event:", JSON.stringify(event))
       await stream.writeSSE({
         event: event.type,
         data: JSON.stringify(event),

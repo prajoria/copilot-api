@@ -52,8 +52,10 @@ export const checkUsage = defineCommand({
           + `  ${chatLine}\n`
           + `  ${completionsLine}`,
       )
-    } catch (err) {
-      consola.error("Failed to fetch Copilot usage:", err)
+    } catch {
+      consola.error("Failed to fetch Copilot usage", {
+        category: "copilot_usage_error",
+      })
       process.exit(1)
     }
   },

@@ -3,6 +3,8 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 import consola from "consola"
 
+import { upstreamErrorMetadata } from "./logging"
+
 export class HTTPError extends Error {
   response: Response
 
@@ -13,17 +15,12 @@ export class HTTPError extends Error {
 }
 
 export async function forwardError(c: Context, error: unknown) {
-  consola.error("Error occurred:", error)
-
   if (error instanceof HTTPError) {
     const errorText = await error.response.text()
-    let errorJson: unknown
-    try {
-      errorJson = JSON.parse(errorText)
-    } catch {
-      errorJson = errorText
-    }
-    consola.error("HTTP error:", errorJson)
+    consola.error(
+      "Upstream HTTP error",
+      upstreamErrorMetadata(error.response, "upstream_http_error"),
+    )
     return c.json(
       {
         error: {
@@ -35,6 +32,7 @@ export async function forwardError(c: Context, error: unknown) {
     )
   }
 
+  consola.error("Internal proxy error", { category: "internal_proxy_error" })
   return c.json(
     {
       error: {

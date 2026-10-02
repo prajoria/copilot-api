@@ -1,6 +1,7 @@
 import consola from "consola"
 import fs from "node:fs/promises"
 
+import { sanitizeLogIdentifier, upstreamErrorMetadata } from "~/lib/logging"
 import { PATHS } from "~/lib/paths"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
 import { getDeviceCode } from "~/services/github/get-device-code"
@@ -19,11 +20,7 @@ export const setupCopilotToken = async () => {
   const { token, refresh_in } = await getCopilotToken()
   state.copilotToken = token
 
-  // Display the Copilot token to the screen
   consola.debug("GitHub Copilot Token fetched successfully!")
-  if (state.showToken) {
-    consola.info("Copilot token:", token)
-  }
 
   const refreshInterval = (refresh_in - 60) * 1000
   setInterval(async () => {
@@ -32,12 +29,11 @@ export const setupCopilotToken = async () => {
       const { token } = await getCopilotToken()
       state.copilotToken = token
       consola.debug("Copilot token refreshed")
-      if (state.showToken) {
-        consola.info("Refreshed Copilot token:", token)
-      }
-    } catch (error) {
-      consola.error("Failed to refresh Copilot token:", error)
-      throw error
+    } catch {
+      consola.error("Failed to refresh Copilot token", {
+        category: "copilot_token_refresh",
+      })
+      throw new Error("Failed to refresh Copilot token.")
     }
   }, refreshInterval)
 }
@@ -54,9 +50,6 @@ export async function setupGitHubToken(
 
     if (githubToken && !options?.force) {
       state.githubToken = githubToken
-      if (state.showToken) {
-        consola.info("GitHub token:", githubToken)
-      }
       await logUser()
 
       return
@@ -64,7 +57,7 @@ export async function setupGitHubToken(
 
     consola.info("Not logged in, getting new access token")
     const response = await getDeviceCode()
-    consola.debug("Device code response:", response)
+    consola.debug("Device authorization code received")
 
     consola.info(
       `Please enter the code "${response.user_code}" in ${response.verification_uri}`,
@@ -74,25 +67,19 @@ export async function setupGitHubToken(
     await writeGithubToken(token)
     state.githubToken = token
 
-    if (state.showToken) {
-      consola.info("GitHub token:", token)
-    }
     await logUser()
   } catch (error) {
     if (error instanceof HTTPError) {
-      // The error body is not guaranteed to be JSON — GitHub returns an
-      // HTML page (e.g. the "Hello future GitHubber" 503) for transient
-      // upstream failures. Read it as text so logging the error can
-      // never itself throw "Unexpected token '<'" and mask the real cause.
-      const body = await error.response.text().catch(() => "<unreadable body>")
       consola.error(
-        `Failed to get GitHub token (HTTP ${error.response.status}):`,
-        body.slice(0, 500),
+        "Failed to get GitHub token",
+        upstreamErrorMetadata(error.response, "github_token_setup"),
       )
       throw error
     }
 
-    consola.error("Failed to get GitHub token:", error)
+    consola.error("Failed to get GitHub token", {
+      category: "github_token_setup",
+    })
     throw error
   }
 }
@@ -104,11 +91,13 @@ async function logUser() {
   // what actually matters. Warn and continue instead of crashing.
   try {
     const user = await getGitHubUser()
-    consola.info(`Logged in as ${user.login}`)
+    consola.info(`Logged in as ${sanitizeLogIdentifier(user.login)}`)
   } catch (error) {
     consola.warn(
       "Could not fetch GitHub user (continuing anyway):",
-      error instanceof HTTPError ? `HTTP ${error.response.status}` : error,
+      error instanceof HTTPError ?
+        upstreamErrorMetadata(error.response, "github_user_lookup")
+      : { category: "github_user_lookup" },
     )
   }
 }

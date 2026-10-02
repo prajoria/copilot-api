@@ -60,7 +60,7 @@ export function initProxyFromEnv(): void {
 
     setGlobalDispatcher(dispatcher as unknown as Dispatcher)
     consola.debug("HTTP proxy configured from environment (per-URL)")
-  } catch (err) {
-    consola.debug("Proxy setup skipped:", err)
+  } catch {
+    consola.debug("Proxy setup skipped", { category: "proxy_setup_error" })
   }
 }
